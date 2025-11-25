@@ -144,7 +144,9 @@ impl<ET: 'static + PartialEq + Debug> EventLoop<ET> for WinitEventLoop<ET> {
                             _ => {}
                         }
 
-                        if !input_controller.window_input(event, scale_factor) {
+                        if input_controller.window_input(event, scale_factor) {
+                            map.window().request_redraw();
+                        } else {
                             match event {
                                 WindowEvent::CloseRequested
                                 | WindowEvent::KeyboardInput {
@@ -184,6 +186,9 @@ impl<ET: 'static + PartialEq + Debug> EventLoop<ET> for WinitEventLoop<ET> {
                         // FIXME unimplemented!()
                     }
                     Event::AboutToWait => {
+                        // map.window().request_redraw();
+                    }
+                    Event::UserEvent(_) => {
                         map.window().request_redraw();
                     }
                     _ => {}

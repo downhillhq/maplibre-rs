@@ -3,12 +3,16 @@
 //! * Platform Events like suspend/resume
 //! * Render a new frame
 
-use std::{marker::PhantomData, path::PathBuf};
+use std::{
+    marker::PhantomData,
+    path::PathBuf,
+    sync::{mpsc, Arc, Mutex},
+};
 
 use maplibre::{
     environment::OffscreenKernelConfig,
-    event_loop::EventLoop,
-    io::apc::SchedulerAsyncProcedureCall,
+    event_loop::{EventLoop, EventLoopProxy},
+    io::apc::{Message, MessageSender, SchedulerAsyncProcedureCall, SendError},
     kernel::{Kernel, KernelBuilder},
     map::Map,
     platform::{
@@ -22,7 +26,7 @@ use maplibre::{
 use winit::window::WindowAttributes;
 
 use super::WinitMapWindow;
-use crate::{WinitEnvironment, WinitEventLoop};
+use crate::{WinitEnvironment, WinitEventLoop, WinitEventLoopProxy};
 
 #[derive(Clone)]
 pub struct WinitMapWindowConfig<ET> {
@@ -99,6 +103,24 @@ impl<ET: 'static + Clone> MapWindowConfig for WinitMapWindowConfig<ET> {
     }
 }
 
+#[derive(Clone)]
+struct WinitMessageSender {
+    sender: mpsc::Sender<Message>,
+    proxy: Arc<Mutex<Option<WinitEventLoopProxy<()>>>>,
+}
+
+impl MessageSender for WinitMessageSender {
+    fn send(&self, message: Message) -> Result<(), SendError> {
+        self.sender
+            .send(message)
+            .map_err(|_| SendError::Transmission)?;
+        if let Some(proxy) = self.proxy.lock().unwrap().as_ref() {
+            let _ = proxy.send_event(());
+        }
+        Ok(())
+    }
+}
+
 pub fn run_headed_map<P>(
     cache_path: Option<P>,
     window_config: WinitMapWindowConfig<()>,
@@ -113,10 +135,19 @@ pub fn run_headed_map<P>(
         let cache_path = cache_path.map(|path| path.into());
         let client = ReqwestHttpClient::new(cache_path.clone());
 
+        let (sender, receiver) = mpsc::channel();
+        let proxy = Arc::new(Mutex::new(None));
+        let message_sender = WinitMessageSender {
+            sender,
+            proxy: proxy.clone(),
+        };
+
         let kernel: Kernel<Environment<_, _, _>> = KernelBuilder::new()
             .with_map_window_config(window_config)
             .with_http_client(client.clone())
             .with_apc(SchedulerAsyncProcedureCall::new(
+                message_sender,
+                receiver,
                 TokioScheduler::new(),
                 OffscreenKernelConfig {
                     cache_directory: cache_path.map(|path| path.to_str().unwrap().to_string()),
@@ -150,10 +181,13 @@ pub fn run_headed_map<P>(
             map.initialize_renderer().await.unwrap();
         }
 
-        map.window_mut()
+        let event_loop = map
+            .window_mut()
             .take_event_loop()
-            .expect("event loop is not available")
-            .run(map, None)
-            .expect("event loop creation failed")
+            .expect("event loop is not available");
+
+        *proxy.lock().unwrap() = Some(event_loop.create_proxy());
+
+        event_loop.run(map, None).expect("event loop creation failed")
     })
 }

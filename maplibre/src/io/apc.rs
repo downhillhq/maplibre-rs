@@ -6,7 +6,6 @@ use std::{
     marker::PhantomData,
     pin::Pin,
     sync::{
-        mpsc,
         mpsc::{Receiver, Sender},
     },
     vec::IntoIter,
@@ -83,6 +82,10 @@ pub enum Input {
 pub enum SendError {
     #[error("could not transmit data")]
     Transmission,
+}
+
+pub trait MessageSender: Send + Sync + Clone + 'static {
+    fn send(&self, message: Message) -> Result<(), SendError>;
 }
 
 /// Allows sending messages from workers to back to the caller.
@@ -184,33 +187,42 @@ pub trait AsyncProcedureCall<K: OffscreenKernel>: 'static {
     ) -> Result<(), CallError>;
 }
 
-#[derive(Clone)]
-pub struct SchedulerContext {
-    sender: Sender<Message>,
+impl MessageSender for Sender<Message> {
+    fn send(&self, message: Message) -> Result<(), SendError> {
+        self.send(message).map_err(|_e| SendError::Transmission)
+    }
 }
 
-impl Context for SchedulerContext {
+#[derive(Clone)]
+pub struct SchedulerContext<S: MessageSender> {
+    sender: S,
+}
+
+impl<S: MessageSender> Context for SchedulerContext<S> {
     fn send_back<T: IntoMessage>(&self, message: T) -> Result<(), SendError> {
-        self.sender
-            .send(message.into())
-            .map_err(|_e| SendError::Transmission)
+        self.sender.send(message.into())
     }
 }
 
 // An APC that uses a scheduler to execute work asynchronously.
 // An async sender and receiver to exchange return values of calls.
-pub struct SchedulerAsyncProcedureCall<K: OffscreenKernel, S: Scheduler> {
-    channel: (Sender<Message>, Receiver<Message>),
+pub struct SchedulerAsyncProcedureCall<K: OffscreenKernel, S: Scheduler, MS: MessageSender> {
+    channel: (MS, Receiver<Message>),
     buffer: RefCell<Vec<Message>>,
     scheduler: S,
     phantom_k: PhantomData<K>,
     offscreen_kernel_config: OffscreenKernelConfig,
 }
 
-impl<K: OffscreenKernel, S: Scheduler> SchedulerAsyncProcedureCall<K, S> {
-    pub fn new(scheduler: S, offscreen_kernel_config: OffscreenKernelConfig) -> Self {
+impl<K: OffscreenKernel, S: Scheduler, MS: MessageSender> SchedulerAsyncProcedureCall<K, S, MS> {
+    pub fn new(
+        message_sender: MS,
+        message_receiver: Receiver<Message>,
+        scheduler: S,
+        offscreen_kernel_config: OffscreenKernelConfig,
+    ) -> Self {
         Self {
-            channel: mpsc::channel(),
+            channel: (message_sender, message_receiver),
             buffer: RefCell::new(Vec::new()),
             phantom_k: PhantomData::default(),
             scheduler,
@@ -219,8 +231,10 @@ impl<K: OffscreenKernel, S: Scheduler> SchedulerAsyncProcedureCall<K, S> {
     }
 }
 
-impl<K: OffscreenKernel, S: Scheduler> AsyncProcedureCall<K> for SchedulerAsyncProcedureCall<K, S> {
-    type Context = SchedulerContext;
+impl<K: OffscreenKernel, S: Scheduler, MS: MessageSender> AsyncProcedureCall<K>
+    for SchedulerAsyncProcedureCall<K, S, MS>
+{
+    type Context = SchedulerContext<MS>;
     type ReceiveIterator<F: FnMut(&Message) -> bool> = IntoIter<Message>;
 
     fn receive<F: FnMut(&Message) -> bool>(&self, mut filter: F) -> Self::ReceiveIterator<F> {

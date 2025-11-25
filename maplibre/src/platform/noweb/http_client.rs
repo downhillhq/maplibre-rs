@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{fs, path::PathBuf};
 
 use async_trait::async_trait;
 use http_cache_reqwest::{CACacheManager, Cache, CacheMode, HttpCache, HttpCacheOptions};
@@ -33,13 +33,24 @@ impl ReqwestHttpClient {
         let mut builder = reqwest_middleware::ClientBuilder::new(Client::new());
 
         if let Some(cache_path) = cache_path {
-            builder = builder.with(Cache(HttpCache {
-                mode: CacheMode::Default,
-                manager: CACacheManager {
-                    path: cache_path.into(),
-                },
-                options: HttpCacheOptions::default(),
-            }))
+            let cache_path = cache_path.into();
+            // Ensure the cache directory exists to avoid "fopen failed for data file" errors
+            if let Err(e) = fs::create_dir_all(&cache_path) {
+                log::warn!(
+                    "Failed to create cache directory at {:?}: {}. Cache will be disabled.",
+                    cache_path,
+                    e
+                );
+                // Continue without cache if directory creation fails
+            } else {
+                builder = builder.with(Cache(HttpCache {
+                    mode: CacheMode::Default,
+                    manager: CACacheManager {
+                        path: cache_path,
+                    },
+                    options: HttpCacheOptions::default(),
+                }))
+            }
         }
         let client = builder.build();
 

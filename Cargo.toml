@@ -16,9 +16,9 @@ members = [
 [workspace.package]
 description = "Maps for Desktop, Mobile and Web"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 # Keep this in sync with `rust-toolchain.toml` and `justfile`
-rust-version = "1.79"
+rust-version = "1.88"
 license = "MIT OR Apache-2.0"
 keywords = ["graphics", "maps", "webgl", "tiles"]
 categories = ["graphics", "science::geo"]

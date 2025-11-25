@@ -105,6 +105,12 @@ Clone the project
 git clone https://github.com/maplibre/maplibre-rs.git
 ```
 
+Install flatbuffers
+```bash
+brew install flatbuffers
+
+```
+
 Build and run it on a desktop
 
 ```bash

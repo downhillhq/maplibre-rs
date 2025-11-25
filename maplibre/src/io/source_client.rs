@@ -14,8 +14,8 @@ pub type HTTPClientFactory<HC> = dyn Fn() -> HC;
 ///
 /// Users of this library can decide whether futures from the HTTPClient are thread-safe or not via
 /// the future "thread-safe-futures". Tokio futures are thread-safe.
-#[cfg_attr(not(feature = "thread-safe-futures"), async_trait(?Send))]
-#[cfg_attr(feature = "thread-safe-futures", async_trait)]
+#[cfg_attr(any(not(feature = "thread-safe-futures"), target_arch = "wasm32"), async_trait(?Send))]
+#[cfg_attr(all(feature = "thread-safe-futures", not(target_arch = "wasm32")), async_trait)]
 pub trait HttpClient: Clone + Sync + Send + 'static {
     async fn fetch(&self, url: &str) -> Result<Vec<u8>, SourceFetchError>;
 }

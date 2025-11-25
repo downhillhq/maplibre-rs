@@ -1,5 +1,7 @@
+#[cfg(target_arch = "wasm32")]
 use async_trait::async_trait;
 use js_sys::{ArrayBuffer, Uint8Array};
+#[cfg(target_arch = "wasm32")]
 use maplibre::io::source_client::{HttpClient, SourceFetchError};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
@@ -62,11 +64,20 @@ impl Clone for WHATWGFetchHttpClient {
     }
 }
 
+#[cfg(target_arch = "wasm32")]
 #[async_trait(?Send)]
 impl HttpClient for WHATWGFetchHttpClient {
     async fn fetch(&self, url: &str) -> Result<Vec<u8>, SourceFetchError> {
         self.fetch_bytes(url)
             .await
             .map_err(|e| SourceFetchError(Box::new(e)))
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[async_trait::async_trait]
+impl maplibre::io::source_client::HttpClient for WHATWGFetchHttpClient {
+    async fn fetch(&self, _url: &str) -> Result<Vec<u8>, maplibre::io::source_client::SourceFetchError> {
+        panic!("WHATWGFetchHttpClient is not supported on this platform");
     }
 }

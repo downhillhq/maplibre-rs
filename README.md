@@ -114,7 +114,7 @@ brew install flatbuffers
 Build and run it on a desktop
 
 ```bash
-cargo run -p maplibre-demo
+cargo run -p maplibre-demo -- headed
 ```
 
 More information about running the demos on different platforms can be

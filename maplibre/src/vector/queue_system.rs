@@ -28,6 +28,7 @@ pub fn queue_system(MapContext { world, .. }: &mut MapContext) {
     };
 
     let buffer_pool_index = buffer_pool.index();
+    let mut queued_count = 0;
 
     for view_tile in tile_view_pattern.iter() {
         let coords = &view_tile.coords();
@@ -42,6 +43,7 @@ pub fn queue_system(MapContext { world, .. }: &mut MapContext) {
             });
 
             if let Some(layer_entries) = buffer_pool_index.get_layers(source_shape.coords()) {
+                log::debug!("Found {} layer entries for tile {}", layer_entries.len(), source_shape.coords());
                 for layer_entry in layer_entries {
                     // Draw tile
                     layer_item_phase.add(LayerItem {
@@ -53,8 +55,14 @@ pub fn queue_system(MapContext { world, .. }: &mut MapContext) {
                         },
                         source_shape: source_shape.clone(),
                     });
+                    queued_count += 1;
                 }
+            } else {
+                // log::debug!("No layer entries found for tile {}", source_shape.coords());
             };
         });
+    }
+    if queued_count > 0 {
+        log::info!("Queued {queued_count} layer items for rendering");
     }
 }

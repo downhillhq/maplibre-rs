@@ -130,10 +130,16 @@ fn upload_tesselated_layer(
     view_region: &ViewRegion,
 ) {
     // Upload all tessellated layers which are in view
+    let mut uploaded_count = 0;
     for coords in view_region.iter() {
         let Some(vector_layers) = tiles.query_mut::<&VectorLayersDataComponent>(coords) else {
             continue;
         };
+
+        if !vector_layers.done {
+            log::debug!("Tile {coords} not done yet, skipping upload");
+            continue;
+        }
 
         let loaded_layers = buffer_pool
             .get_loaded_source_layers_at(coords)
@@ -148,6 +154,9 @@ fn upload_tesselated_layer(
             })
             .filter(|data| !loaded_layers.contains(data.source_layer.as_str()))
             .collect::<Vec<_>>();
+
+        log::info!("Tile {coords} has {} available layers, {} already loaded", 
+                   available_layers.len(), loaded_layers.len());
 
         for style_layer in &style.layers {
             let source_layer = style_layer.source_layer.as_ref().unwrap(); // TODO: Unwrap
@@ -180,7 +189,8 @@ fn upload_tesselated_layer(
                 })
                 .collect::<Vec<_>>();
 
-            log::debug!("Allocating geometry at {coords}");
+            log::info!("Uploading layer {} for tile {} with {} features", 
+                      source_layer, coords, feature_indices.len());
             buffer_pool.allocate_layer_geometry(
                 queue,
                 *coords,
@@ -189,6 +199,10 @@ fn upload_tesselated_layer(
                 ShaderLayerMetadata::new(style_layer.index as f32),
                 &feature_metadata,
             );
+            uploaded_count += 1;
         }
+    }
+    if uploaded_count > 0 {
+        log::info!("Uploaded {uploaded_count} layers to GPU");
     }
 }

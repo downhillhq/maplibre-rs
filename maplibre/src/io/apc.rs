@@ -234,19 +234,22 @@ impl<K: OffscreenKernel, S: Scheduler> AsyncProcedureCall<K> for SchedulerAsyncP
             if filter(&buffer[index]) {
                 ret.push(buffer.swap_remove(index));
                 max_len -= 1;
+            } else {
+                index += 1;
             }
-            index += 1;
         }
 
         // TODO: (optimize) Using while instead of if means that we are processing all that is
         // TODO: available this might cause frame drops.
         while let Ok(message) = self.channel.1.try_recv() {
-            tracing::debug!("Data reached main thread: {message:?}");
-            log::debug!("Data reached main thread: {message:?}");
+            // tracing::debug!("Data reached main thread: {message:?}");
+            // log::debug!("Data reached main thread: {message:?}");
+            log::info!("Data reached main thread with tag: {:?}", message.tag);
 
             if filter(&message) {
                 ret.push(message);
             } else {
+                log::warn!("Message filtered out: {:?}", message.tag);
                 buffer.push(message)
             }
         }

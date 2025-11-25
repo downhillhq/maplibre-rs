@@ -101,7 +101,7 @@ impl<ET: 'static + PartialEq + Debug> EventLoop<ET> for WinitEventLoop<ET> {
                 return;
             }
 
-            match event {
+                match event {
                     Event::DeviceEvent {
                         ref event,
                         .. // We're not using device_id currently
@@ -182,6 +182,9 @@ impl<ET: 'static + PartialEq + Debug> EventLoop<ET> for WinitEventLoop<ET> {
                     }
                     Event::Resumed => {
                         // FIXME unimplemented!()
+                    }
+                    Event::AboutToWait => {
+                        map.window().request_redraw();
                     }
                     _ => {}
                 }

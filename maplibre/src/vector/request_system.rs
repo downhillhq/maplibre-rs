@@ -127,28 +127,40 @@ pub fn fetch_vector_apc<K: OffscreenKernel, T: VectorTransferables, C: Context +
             })
             .collect();
 
+        log::debug!("fill_layers for tile {coords}: {:?}", fill_layers);
+
         let client = kernel.source_client();
 
         if !fill_layers.is_empty() {
             let context = context.clone();
             let source = SourceType::Tessellate(TessellateSource::default());
+            let url = source.format(&coords);
+            log::info!("Fetching tile from URL: {url}");
             match client.fetch(&coords, &source).await {
                 Ok(data) => {
+                    log::info!("Successfully fetched tile {coords}, size: {} bytes", data.len());
                     let data = data.into_boxed_slice();
 
                     let mut pipeline_context = ProcessVectorContext::<T, C>::new(context);
-                    process_vector_tile(
+                    match process_vector_tile(
                         &data,
                         VectorTileRequest {
                             coords,
-                            layers: fill_layers,
+                            layers: fill_layers.clone(),
                         },
                         &mut pipeline_context,
-                    )
-                    .map_err(|e| ProcedureError::Execution(Box::new(e)))?;
+                    ) {
+                        Ok(()) => {
+                            log::info!("Successfully processed tile {coords}");
+                        }
+                        Err(e) => {
+                            log::error!("Failed to process tile {coords}: {e:?}");
+                            return Err(ProcedureError::Execution(Box::new(e)));
+                        }
+                    }
                 }
                 Err(e) => {
-                    log::error!("{e:?}");
+                    log::error!("Failed to fetch tile {coords} from {url}: {e:?}");
                     for to_load in &fill_layers {
                         context
                             .send_back(<T as VectorTransferables>::LayerMissing::build_from(
@@ -159,6 +171,8 @@ pub fn fetch_vector_apc<K: OffscreenKernel, T: VectorTransferables, C: Context +
                     }
                 }
             }
+        } else {
+            log::warn!("No fill layers found for tile {coords}, skipping fetch");
         }
 
         Ok(())
